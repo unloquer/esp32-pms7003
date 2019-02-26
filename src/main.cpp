@@ -8,6 +8,7 @@
  */
 
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <InfluxArduino.hpp>
 #include <ArduinoJson.h>
 #include <vector>
@@ -64,6 +65,7 @@ int stime = 5;                 // sample time (send data each 5 sec)
 String ssid, pass;
 bool dataSendToggle;
 bool wifiOn;
+bool inOTAUpdate = false;
 
 // Bluetooth fields
 BLEServer* pServer = NULL;
@@ -277,6 +279,44 @@ bool wifiCheck(){
   return wifiOn;
 }
 
+void wifiOTAInit(){
+  ArduinoOTA
+      .onStart([]() {
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH)
+          type = "sketch";
+        else // U_SPIFFS
+          type = "filesystem";
+
+        inOTAUpdate = true;
+        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+        Serial.println("Start updating " + type);
+      })
+      .onEnd([]() {
+        inOTAUpdate = false;
+        Serial.println("\nEnd");
+      })
+      .onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      })
+      .onError([](ota_error_t error) {
+        inOTAUpdate = false;
+        Serial.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR)
+          Serial.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR)
+          Serial.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR)
+          Serial.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR)
+          Serial.println("Receive Failed");
+        else if (error == OTA_END_ERROR)
+          Serial.println("End Failed");
+      });
+
+  ArduinoOTA.begin();
+}
+
 void wifiConnect(const char* ssid, const char* pass) {
   Serial.print("-->[WIFI] Connecting to "); Serial.print(ssid);
   WiFi.begin(ssid, pass);
@@ -287,6 +327,10 @@ void wifiConnect(const char* ssid, const char* pass) {
   }
   if(wifiCheck()){
     Serial.println("done\n-->[WIFI] connected!");
+    wifiOTAInit();
+    Serial.println("-->[WIFI] OTA ready.");
+    Serial.print("-->[WIFI] IP address: ");
+    Serial.println(WiFi.localIP());
   }
 }
 
@@ -301,6 +345,7 @@ void wifiLoop(){
     wifiConnect(ssid.c_str(), pass.c_str());
     influxDbReconnect();
   }
+  if(wifiCheck())ArduinoOTA.handle();
 }
 
 /******************************************************************************
@@ -493,14 +538,20 @@ void setup() {
   delay(1000);
 }
 
-void loop(){
-  gui.pageStart();
-  sensorLoop();    // read HPMA serial data and showed it
-  avarageLoop();   // calculated of sensor data avarage
-  bleLoop();       // notify data to connected devices
-  wifiLoop();      // check wifi and reconnect it
-  influxDbLoop();    // influxDB publication
-  statusLoop();    // update sensor status GUI
-  gui.pageEnd();
-  delay(1000);
+void loop()
+{
+  if (inOTAUpdate)
+    ArduinoOTA.handle();
+  else
+  {
+    gui.pageStart();
+    sensorLoop();   // read HPMA serial data and showed it
+    avarageLoop();  // calculated of sensor data avarage
+    bleLoop();      // notify data to connected devices
+    wifiLoop();     // check wifi and reconnect it
+    influxDbLoop(); // influxDB publication
+    statusLoop();   // update sensor status GUI
+    gui.pageEnd();
+    delay(1000);
+  }
 }
