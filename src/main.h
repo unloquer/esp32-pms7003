@@ -1,8 +1,15 @@
 
 using namespace std;
 
-HardwareSerial hpmaSerial(1);
-HPMA115S0 hpma115S0(hpmaSerial);
+// HardwareSerial hpmaSerial(1);
+// HPMA115S0 hpma115S0(hpmaSerial);
+
+#include "PMS.h"
+
+HardwareSerial pmsSerial(1);
+PMS pms(pmsSerial);
+PMS::DATA data;
+
 
 vector<unsigned int> v25;      // for average
 vector<unsigned int> v10;      // for average

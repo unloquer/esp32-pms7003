@@ -27,6 +27,7 @@
 #include "main.h"
 #include "status.h"
 
+
 /******************************************************************************
 * S E T U P  B O A R D   A N D  F I E L D S
 * ---------------------
@@ -62,29 +63,28 @@ U8G2_SSD1306_64X48_ER_F_HW_I2C u8g2(U8G2_R0,U8X8_PIN_NONE,U8X8_PIN_NONE,U8X8_PIN
  */
 void sensorConfig(){
   Serial.println("-->[HPMA] configuration hpma115S0 sensor..");
-  hpmaSerial.begin(9600,SERIAL_8N1,HPMA_RX,HPMA_TX);
-  hpma115S0.Init();
-  delay(100);
-  hpma115S0.EnableAutoSend();
-  delay(100);
-  hpma115S0.StartParticleMeasurement();
+  // hpma115S0.Init();
+  // delay(100);
+  // hpma115S0.EnableAutoSend();
+  // delay(100);
+  // hpma115S0.StartParticleMeasurement();
   delay(100);
   Serial.println("-->[HPMA] sensor configured.");
 }
 
 void sensorInit(){
-  Serial.println("-->[HPMA] starting hpma115S0 sensor..");
-  delay(100);
-  hpmaSerial.begin(9600,SERIAL_8N1,HPMA_RX,HPMA_TX);
-  delay(100);
+  Serial.println("-->[HPMA] starting PMS7003 sensor..");
+  // delay(100);
+  pmsSerial.begin(9600,SERIAL_8N1,A14,A16);
+  // delay(100);
 }
 
 void wrongDataState(){
   Serial.println("-->[E][HPMA] !wrong data!");
   setErrorCode(ecode_sensor_read_fail);
-  gui.displaySensorAvarage(apm25);
-  gui.displaySensorData(0,0); 
-  hpmaSerial.end();
+  // gui.displaySensorAvarage(apm25);
+  // gui.displaySensorData(0,0); 
+  //hpmaSerial.end();
   statusOff(bit_sensor);
   sensorInit();
   delay(1000);
@@ -123,35 +123,10 @@ void averageLoop(){
  **/
 void sensorLoop(){
   Serial.print("-->[HPMA] read..");
-  int try_sensor_read = 0;
-  String txtMsg = "";
-  while (txtMsg.length() < 32 && try_sensor_read++ < SENSOR_RETRY) {
-    while (hpmaSerial.available() > 0) {
-      char inChar = hpmaSerial.read();
-      txtMsg += inChar;
-      Serial.print(".");
-    }
-  }
-  if(try_sensor_read > SENSOR_RETRY){
-    setErrorCode(ecode_sensor_timeout);
-    Serial.println("fail"); 
-    Serial.println("-->[E][HPMA] disconnected ?"); 
-    delay(3000);  // waiting for sensor..
-  }
-  if (txtMsg[0] == 66) {
-    if (txtMsg[1] == 77) {
-      Serial.print("done");
-      statusOn(bit_sensor);
-      unsigned int pm25 = txtMsg[6] * 256 + byte(txtMsg[7]);
-      unsigned int pm10 = txtMsg[8] * 256 + byte(txtMsg[9]);
-      if(pm25<1000&&pm10<1000){
-        gui.displaySensorAvarage(apm25);  // it was calculated on bleLoop()
-        gui.displaySensorData(pm25,pm10); 
-        saveDataForAverage(pm25,pm10);
-      }
-      else wrongDataState();
-    }
-    else wrongDataState();
+  if (pms.readUntil(data)){
+    Serial.print("PM2.5 ");Serial.println(data.PM_AE_UG_2_5);
+    Serial.print("PM10 ");Serial.println(data.PM_AE_UG_10_0);
+    saveDataForAverage(data.PM_AE_UG_2_5,data.PM_AE_UG_10_0);
   }
   else wrongDataState();
 }
@@ -163,8 +138,8 @@ void statusLoop(){
     updateStatusError();
     wifiCheck();
   }
-  gui.updateError(getErrorCode());
-  gui.displayStatus(wifiOn,true,deviceConnected,dataSendToggle);
+  //gui.updateError(getErrorCode());
+  //gui.displayStatus(wifiOn,true,deviceConnected,dataSendToggle);
   if(dataSendToggle)dataSendToggle=false;
 }
 
@@ -481,37 +456,38 @@ void bleLoop(){
 
 void setup() {
   Serial.begin(115200);
-  gui.displayInit(u8g2);
-  gui.showWelcome();
+
+  // gui.displayInit(u8g2);
+  // gui.showWelcome();
   cfg.init("canairio");
   Serial.println("\n== INIT SETUP ==\n");
   Serial.println("-->[INFO] ESP32MAC: "+String(cfg.deviceId));
-  gui.welcomeAddMessage("Sensors test..");
+  // gui.welcomeAddMessage("Sensors test..");
   sensorInit();
-  am2320.begin();
+  //am2320.begin();
   bleServerInit();
-  gui.welcomeAddMessage("GATT server..");
-  if(cfg.ssid.length()>0) gui.welcomeAddMessage("WiFi:"+cfg.ssid);
-  else gui.welcomeAddMessage("WiFi radio test..");
+  // gui.welcomeAddMessage("GATT server..");
+  // if(cfg.ssid.length()>0) gui.welcomeAddMessage("WiFi:"+cfg.ssid);
+  // else gui.welcomeAddMessage("WiFi radio test..");
   wifiInit();
-  gui.welcomeAddMessage("CanAirIO API..");
+  // gui.welcomeAddMessage("CanAirIO API..");
   influxDbInit();
   apiInit();
-  pinMode(LED,OUTPUT);
-  gui.welcomeAddMessage("==SETUP READY==");
+  // pinMode(LED,OUTPUT);
+  // gui.welcomeAddMessage("==SETUP READY==");
   delay(500);
 }
 
 void loop(){
-  gui.pageStart();
+  // gui.pageStart();
   sensorLoop();    // read HPMA serial data and showed it
   averageLoop();   // calculated of sensor data average
-  humidityLoop();  // read AM2320
+  // humidityLoop();  // read AM2320
   bleLoop();       // notify data to connected devices
   wifiLoop();      // check wifi and reconnect it
   apiLoop();
   influxDbLoop();  // influxDB publication
   statusLoop();    // update sensor status GUI
-  gui.pageEnd();
+  // gui.pageEnd();
   delay(1000);
 }
